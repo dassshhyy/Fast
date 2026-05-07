@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="ar" dir="rtl" data-bs-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>تسجيل الدخول</title>
+    <link href="/static/vendor/bootstrap/css/bootstrap.rtl.min.css" rel="stylesheet" />
+    <link href="/static/vendor/fontawesome/css/all.min.css" rel="stylesheet" />
+    <style>
+      @font-face {
+        font-family: "SF Arabic";
+        src: url('/static/fonts/sf-arabic/SFArabic.ttf') format('truetype');
+        font-weight: 100 900;
+      }
+      @font-face {
+        font-family: "SF Arabic Rounded";
+        src: url('/static/fonts/sf-arabic/SFArabicRounded.ttf') format('truetype');
+        font-weight: 100 900;
+      }
+
+      :root {
+        --bg: #f3f6fc;
+        --ink: #172033;
+        --muted: #6b768d;
+        --line: #dbe3ef;
+        --brand: #2a61f5;
+      }
+
+      html, body { height: 100%; }
+
+      body {
+        margin: 0;
+        font-family: "SF Arabic", "SF Arabic Rounded", "Segoe UI", Tahoma, sans-serif;
+        color: var(--ink);
+        background:
+          radial-gradient(900px 320px at 100% -15%, rgba(42, 97, 245, .12), transparent 62%),
+          radial-gradient(760px 280px at -5% 108%, rgba(14, 116, 144, .1), transparent 62%),
+          var(--bg);
+        display: grid;
+        place-items: center;
+        padding: 18px;
+      }
+
+      .auth-shell {
+        width: min(430px, 94vw);
+      }
+
+      .auth-card {
+        background: rgba(255, 255, 255, .92);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        box-shadow: 0 18px 40px rgba(15, 23, 42, .08);
+        backdrop-filter: blur(8px);
+        animation: rise .28s ease-out;
+      }
+
+      @keyframes rise {
+        from { opacity: 0; transform: translateY(8px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+
+      .brand-mark {
+        width: 54px;
+        height: 54px;
+        border-radius: 14px;
+        display: grid;
+        place-items: center;
+        color: #fff;
+        background: linear-gradient(135deg, #2b63fb, #204fd6);
+        box-shadow: 0 10px 24px rgba(43, 99, 251, .28);
+        margin-bottom: 10px;
+      }
+
+      .title {
+        margin: 0;
+        font-weight: 700;
+        letter-spacing: -.01em;
+      }
+
+      .subtitle {
+        margin: 6px 0 0;
+        color: var(--muted);
+        font-size: .94rem;
+      }
+
+      .form-label {
+        font-weight: 600;
+        color: #344155;
+        margin-bottom: .38rem;
+      }
+
+      .form-control {
+        border-radius: 12px;
+        border-color: #d9e3f0;
+        min-height: 46px;
+        transition: border-color .18s ease, box-shadow .18s ease;
+      }
+
+      .form-control:focus {
+        border-color: #9db8f7;
+        box-shadow: 0 0 0 .22rem rgba(39, 93, 246, .14);
+      }
+
+      .input-wrap {
+        position: relative;
+      }
+
+      .input-wrap .fa {
+        position: absolute;
+        left: 14px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #8a98ae;
+        pointer-events: none;
+      }
+      .password-toggle {
+        position: absolute;
+        left: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        border: 0;
+        background: transparent;
+        color: #7f8ea6;
+        padding: 4px 6px;
+        line-height: 1;
+      }
+      .password-toggle:hover { color: #49566f; }
+      .password-toggle:focus-visible {
+        outline: 2px solid #9db8f7;
+        outline-offset: 2px;
+        border-radius: 6px;
+      }
+
+      .input-wrap .form-control { padding-left: 40px; }
+
+      .btn-login {
+        border-radius: 12px;
+        min-height: 46px;
+        font-weight: 600;
+        letter-spacing: .01em;
+      }
+
+      .hint {
+        color: var(--muted);
+        font-size: .82rem;
+      }
+    </style>
+  </head>
+
+  <body>
+    <main class="auth-shell">
+      <section class="auth-card p-4 p-lg-4">
+        <div class="d-flex flex-column align-items-center text-center mb-3">
+          <div class="brand-mark"><i class="fa-solid fa-shield-halved"></i></div>
+          <h1 class="title h4">دخول لوحة التحكم</h1>
+          <p class="subtitle">تسجيل دخول آمن لمتابعة السجلات والإدارة</p>
+        </div>
+
+        {% if error %}
+        <div class="alert alert-danger py-2 d-flex align-items-center gap-2" role="alert">
+          <i class="fa-solid fa-circle-exclamation"></i>
+          <span>{{ error }}</span>
+        </div>
+        {% endif %}
+
+        <form method="post" action="/login" class="d-grid gap-3">
+          <div>
+            <label class="form-label">اسم المستخدم</label>
+            <div class="input-wrap">
+              <i class="fa fa-user"></i>
+              <input class="form-control" name="username" required autocomplete="username" />
+            </div>
+          </div>
+
+          <div>
+            <label class="form-label">كلمة المرور</label>
+            <div class="input-wrap">
+              <button class="password-toggle" type="button" id="togglePassword" tabindex="-1" aria-label="إظهار كلمة المرور" aria-pressed="false">
+                <i class="fa-regular fa-eye" id="togglePasswordIcon"></i>
+              </button>
+              <input class="form-control" id="passwordInput" type="password" name="password" required autocomplete="current-password" />
+            </div>
+          </div>
+
+          <button class="btn btn-primary btn-login" type="submit">
+            <i class="fa-solid fa-right-to-bracket ms-1"></i>
+            دخول
+          </button>
+        </form>
+
+      </section>
+    </main>
+    <script>
+      const toggleBtn = document.getElementById("togglePassword");
+      const passwordInput = document.getElementById("passwordInput");
+      const toggleIcon = document.getElementById("togglePasswordIcon");
+
+      toggleBtn.addEventListener("click", () => {
+        const visible = passwordInput.type === "text";
+        passwordInput.type = visible ? "password" : "text";
+        toggleBtn.setAttribute("aria-pressed", String(!visible));
+        toggleBtn.setAttribute("aria-label", visible ? "إظهار كلمة المرور" : "إخفاء كلمة المرور");
+        toggleIcon.className = visible ? "fa-regular fa-eye" : "fa-regular fa-eye-slash";
+      });
+    </script>
+  </body>
+</html>
