@@ -73,13 +73,7 @@ MONGODB_DB_NAME = os.getenv('MONGODB_DB_NAME', 'general_dashboard')
 MONGODB_SERVER_SELECTION_TIMEOUT_MS = env_int('MONGODB_SERVER_SELECTION_TIMEOUT_MS', 5000)
 
 DEFAULT_CORS_ALLOW_ORIGINS = [
-    'http://127.0.0.1:8000',
-    'http://localhost:8000',
-    'http://127.0.0.1:5500',
-    'http://localhost:5500',
-    'http://127.0.0.1:8001',
-    'http://localhost:8001',
-    'null',
+    "*"
 ]
 CORS_ALLOW_ORIGINS = env_csv('CORS_ALLOW_ORIGINS', default=DEFAULT_CORS_ALLOW_ORIGINS)
 CORS_ALLOW_METHODS = env_csv('CORS_ALLOW_METHODS', default=['GET', 'POST', 'OPTIONS'])
