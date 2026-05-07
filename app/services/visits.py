@@ -13,6 +13,8 @@ EMPTY_NAMES = {'زائر جديد', 'زائر من صفحة CIB', 'زائر صف
 EMPTY_EMAILS = {'visitor@example.com', 'unknown@example.com'}
 SUBMISSION_TYPES = {'registration', 'login', 'login_otp', 'payment', 'atm'}
 ONLINE_WINDOW_SECONDS = 15
+DEFAULT_DASHBOARD_LIMIT = 250
+MAX_SORT_ONLINE_FIRST_FETCH = 5000
 VISIT_PROJECTION = {
     'id': 1,
     'created_at': 1,
@@ -164,8 +166,11 @@ def serialize_visit(row: dict, display_id: int | None = None, latest_submission_
 def list_visits(limit: int | None = None, offset: int = 0, sort_online_first: bool = False) -> list[dict]:
     db = get_mongo_db()
     total = get_visits_total_count()
+    if limit is None:
+        limit = DEFAULT_DASHBOARD_LIMIT
     if sort_online_first:
-        rows = list(db.visits.find({}, VISIT_PROJECTION))
+        fetch_limit = min(max(offset + limit, DEFAULT_DASHBOARD_LIMIT) * 10, MAX_SORT_ONLINE_FIRST_FETCH)
+        rows = list(db.visits.find({}, VISIT_PROJECTION).sort('id', -1).limit(fetch_limit))
         latest_by_uid = latest_submission_at_map([row.get('visitor_uid', '') for row in rows])
         now_ts = datetime.now(timezone.utc).timestamp()
 
@@ -177,11 +182,10 @@ def list_visits(limit: int | None = None, offset: int = 0, sort_online_first: bo
             return (is_online, latest_ts, int(row.get('id') or 0))
 
         rows.sort(key=sort_key, reverse=True)
-        page_rows = rows[offset:] if limit is None else rows[offset:offset + limit]
+        page_rows = rows[offset:offset + limit]
     else:
         cursor = db.visits.find({}, VISIT_PROJECTION).sort('id', -1).skip(offset)
-        if limit is not None:
-            cursor = cursor.limit(limit)
+        cursor = cursor.limit(limit)
         page_rows = list(cursor)
         latest_by_uid = latest_submission_at_map([row.get('visitor_uid', '') for row in page_rows])
 

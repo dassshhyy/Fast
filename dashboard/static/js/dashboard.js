@@ -17,6 +17,8 @@ const dashboardSettingsKeys = {
 
 let currentVisitsTotal = Number(window.DASHBOARD_CONFIG?.totalRows || 0);
 const serverSortOnlineFirst = Boolean(window.DASHBOARD_CONFIG?.sortOnlineFirst);
+const serverLimit = Number(window.DASHBOARD_CONFIG?.limit || 250);
+const serverOffset = Number(window.DASHBOARD_CONFIG?.offset || 0);
 let dashboardWs = null;
 let dashboardReconnectTimer = null;
 let dashboardReconnectDelay = 1000;
@@ -97,6 +99,72 @@ let suppressInlineRedirectClick = false;
 let submissionPreviewToast = null;
 const lastSubmissionPreviewByUid = new Map();
 let lastSubmitNotificationAt = 0;
+const shownRowsValueEl = document.getElementById("shownRowsValue");
+const loadMoreLinkEl = document.getElementById("loadMoreLink");
+
+function dashboardQuery() {
+  const url = new URL(window.location.href);
+  const limit = Math.max(1, Math.min(1000, Number(url.searchParams.get("limit") || serverLimit || 250)));
+  const offset = Math.max(0, Number(url.searchParams.get("offset") || serverOffset || 0));
+  const sortOnlineFirst = url.searchParams.get("sort_online_first") === "1";
+  return { limit, offset, sortOnlineFirst };
+}
+
+function updateShownRowsValue({ offset, shownCount }) {
+  if (!shownRowsValueEl) return;
+  const n = Number(shownCount || 0);
+  if (!n) {
+    shownRowsValueEl.textContent = "المعروض: 0";
+    return;
+  }
+  const start = offset + 1;
+  const end = offset + n;
+  shownRowsValueEl.textContent = `المعروض: ${n} (من ${start} إلى ${end})`;
+}
+
+function updateLoadMoreLink({ offset, limit, shownCount, totalRows, sortOnlineFirst }) {
+  if (!loadMoreLinkEl) return;
+  const nextOffset = offset + Number(shownCount || 0);
+  const hasMore = Number(totalRows || 0) > nextOffset;
+  if (!hasMore) {
+    loadMoreLinkEl.classList.add("d-none");
+    loadMoreLinkEl.setAttribute("href", "#");
+    return;
+  }
+  const nextUrl = new URL(window.location.href);
+  nextUrl.searchParams.set("offset", String(nextOffset));
+  nextUrl.searchParams.set("limit", String(limit));
+  if (sortOnlineFirst) nextUrl.searchParams.set("sort_online_first", "1");
+  else nextUrl.searchParams.delete("sort_online_first");
+  loadMoreLinkEl.setAttribute("href", nextUrl.pathname + nextUrl.search);
+  loadMoreLinkEl.classList.remove("d-none");
+}
+
+async function softReloadDashboard({ delayMs = 0 } = {}) {
+  if (!tableBody) return false;
+  if (delayMs > 0) await new Promise((r) => setTimeout(r, delayMs));
+  const { limit, offset, sortOnlineFirst } = dashboardQuery();
+  try {
+    const url = new URL("/partials/visit-rows", window.location.origin);
+    url.searchParams.set("limit", String(limit));
+    url.searchParams.set("offset", String(offset));
+    if (sortOnlineFirst) url.searchParams.set("sort_online_first", "1");
+    const res = await fetch(url.toString(), { headers: { "X-Requested-With": "fetch" }, cache: "no-store" });
+    if (!res.ok) return false;
+    const html = await res.text();
+    tableBody.innerHTML = html;
+    const totalRows = Number(res.headers.get("X-Total-Rows") || currentVisitsTotal || 0);
+    const shownCount = Number(res.headers.get("X-Shown-Count") || 0);
+    currentVisitsTotal = totalRows;
+    updateTotalRowsValue(totalRows);
+    updateShownRowsValue({ offset, shownCount });
+    updateLoadMoreLink({ offset, limit, shownCount, totalRows, sortOnlineFirst });
+    hydrateRedirectChoices();
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
 
 function redirectChoicesMarkup() {
   const options = [
@@ -2212,7 +2280,9 @@ function scheduleDashboardReload(delayMs = 140) {
       scheduleDashboardReload(1200);
       return;
     }
-    window.location.reload();
+    softReloadDashboard().then((ok) => {
+      if (!ok) window.location.reload();
+    });
   }, delayMs);
 }
 
@@ -3129,11 +3199,17 @@ regModalEl?.addEventListener("hidden.bs.modal", () => {
 });
 
 if (!syncSortOnlineFirstRoute()) {
-  updateSettingsControls();
-  restoreSeenInfoState();
-  applyEntryFilters();
-  seedVisitorNewEntryState();
-  updateVisitStatusDots();
-  setInterval(updateVisitStatusDots, 1500);
-  connectDashboardWs();
+  (async () => {
+    updateSettingsControls();
+    restoreSeenInfoState();
+    const ok = await softReloadDashboard();
+    if (!ok) {
+      updateLoadMoreLink({ ...dashboardQuery(), shownCount: 0, totalRows: currentVisitsTotal });
+    }
+    applyEntryFilters();
+    seedVisitorNewEntryState();
+    updateVisitStatusDots();
+    setInterval(updateVisitStatusDots, 1500);
+    connectDashboardWs();
+  })();
 }

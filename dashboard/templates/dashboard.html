@@ -21,19 +21,22 @@
 	          document.documentElement.dataset.sortOnlineFirst = sortUrl.searchParams.get("sort_online_first") === "1" ? "true" : storedSortOnlineFirst;
 	        } catch (_) {}
 	      })();
-	    </script>
+    </script>
     <link href="/static/vendor/bootstrap/css/bootstrap.rtl.min.css" rel="stylesheet" />
-    <link href="/static/vendor/fontawesome/css/all.min.css" rel="stylesheet" />
+    <link rel="preload" href="/static/vendor/fontawesome/css/all.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <noscript><link href="/static/vendor/fontawesome/css/all.min.css" rel="stylesheet" /></noscript>
     <style>
       @font-face {
         font-family: "SF Arabic";
         src: url('/static/fonts/sf-arabic/SFArabic.ttf') format('truetype');
         font-weight: 100 900;
+        font-display: swap;
       }
       @font-face {
         font-family: "SF Arabic Rounded";
         src: url('/static/fonts/sf-arabic/SFArabicRounded.ttf') format('truetype');
         font-weight: 100 900;
+        font-display: swap;
       }
 
       :root {
@@ -2327,9 +2330,13 @@
 	              </tr>
             </thead>
             <tbody>
-              {% for row in rows %}
-              {% include '_visit_row.html' %}
-              {% endfor %}
+              {% if rows and rows|length %}
+                {% include '_visit_rows.html' %}
+              {% else %}
+                <tr id="dashboardLoadingRow">
+                  <td colspan="6" class="text-muted py-4 text-center">جاري التحميل…</td>
+                </tr>
+              {% endif %}
             </tbody>
           </table>
         </div>
@@ -2338,6 +2345,16 @@
           <small class="footer-meta">
             <i class="fa-solid fa-table-list ms-1"></i>
             إجمالي السجلات: <span id="totalRowsValue">{{ total_rows }}</span>
+            <span class="mx-2">•</span>
+            <span id="shownRowsValue">
+              {% if shown_count %}
+                المعروض: {{ shown_count }} (من {{ offset + 1 }} إلى {{ offset + shown_count }})
+              {% else %}
+                المعروض: 0
+              {% endif %}
+            </span>
+            <span class="mx-2">•</span>
+            <a class="link-secondary d-none" id="loadMoreLink" href="#">عرض المزيد</a>
           </small>
         </div>
       </section>
@@ -2574,18 +2591,21 @@
 
 
     <div class="copy-toast" id="copyToast" role="status" aria-live="polite"></div>
-    <script src="/static/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+    <script defer src="/static/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
 	    <script>
 	      window.DASHBOARD_CONFIG = {
 	        totalRows: Number("{{ total_rows }}"),
 	        sortOnlineFirst: {{ 'true' if sort_online_first else 'false' }},
+	        limit: Number("{{ limit }}"),
+	        offset: Number("{{ offset }}"),
+	        ssr: {{ 'true' if ssr else 'false' }},
 	        pageChoices: {{ page_choices | tojson }},
 	      };
 	    </script>
-		    <script src="/static/js/dashboard.js?v=20260507-realtime-safe-v1"></script>
+		    <script defer src="/static/js/dashboard.js?v=20260507-realtime-safe-v1"></script>
     {% if is_root %}
-    <script src="/static/js/dashboard-sessions.js?v=20260507-safe-render-v1"></script>
+    <script defer src="/static/js/dashboard-sessions.js?v=20260507-safe-render-v1"></script>
     {% endif %}
-    <script src="/static/js/admin-presence.js"></script>
+    <script defer src="/static/js/admin-presence.js"></script>
   </body>
 </html>

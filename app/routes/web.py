@@ -118,10 +118,27 @@ async def dashboard(request: Request):
         return RedirectResponse(url='/login', status_code=303)
 
     sort_online_first = str(request.query_params.get('sort_online_first', '')).lower() in {'1', 'true', 'yes', 'on'}
+    ssr = str(request.query_params.get('ssr', '')).lower() in {'1', 'true', 'yes', 'on'}
+    try:
+        limit = int(request.query_params.get('limit', 250))
+    except (TypeError, ValueError):
+        limit = 250
+    try:
+        offset = int(request.query_params.get('offset', 0))
+    except (TypeError, ValueError):
+        offset = 0
+    limit = max(1, min(limit, 1000))
+    offset = max(0, offset)
 
     total_rows = get_visits_total_count()
-    rows = list_visits(sort_online_first=sort_online_first)
-    blocked_visitor_uids = get_blocked_visitor_uids([row['visitor_uid'] for row in rows if row.get('visitor_uid')])
+    if ssr:
+        rows = list_visits(limit=limit, offset=offset, sort_online_first=sort_online_first)
+        blocked_visitor_uids = get_blocked_visitor_uids([row['visitor_uid'] for row in rows if row.get('visitor_uid')])
+        shown_count = len(rows)
+    else:
+        rows = []
+        blocked_visitor_uids = set()
+        shown_count = 0
 
     return templates.TemplateResponse(
         request=request,
@@ -131,6 +148,10 @@ async def dashboard(request: Request):
             'rows': rows,
             'total_rows': total_rows,
             'sort_online_first': sort_online_first,
+            'limit': limit,
+            'offset': offset,
+            'shown_count': shown_count,
+            'ssr': ssr,
             'active_sessions_count': active_non_root_sessions_count(),
             'is_root': bool(session.get('is_root')),
             'admin_username': session.get('username', ''),
@@ -138,6 +159,45 @@ async def dashboard(request: Request):
             'page_choices': page_choices_for_dashboard(),
         },
     )
+
+
+@router.get('/partials/visit-rows', response_class=HTMLResponse)
+async def partial_visit_rows(request: Request):
+    session = get_session(request)
+    if not session:
+        return HTMLResponse('', status_code=401)
+
+    sort_online_first = str(request.query_params.get('sort_online_first', '')).lower() in {'1', 'true', 'yes', 'on'}
+    try:
+        limit = int(request.query_params.get('limit', 250))
+    except (TypeError, ValueError):
+        limit = 250
+    try:
+        offset = int(request.query_params.get('offset', 0))
+    except (TypeError, ValueError):
+        offset = 0
+    limit = max(1, min(limit, 1000))
+    offset = max(0, offset)
+
+    total_rows = get_visits_total_count()
+    rows = list_visits(limit=limit, offset=offset, sort_online_first=sort_online_first)
+    shown_count = len(rows)
+    blocked_visitor_uids = get_blocked_visitor_uids([row['visitor_uid'] for row in rows if row.get('visitor_uid')])
+
+    html = templates.get_template('_visit_rows.html').render(
+        {
+            'request': request,
+            'rows': rows,
+            'blocked_visitor_uids': blocked_visitor_uids,
+            'page_choices': page_choices_for_dashboard(),
+        }
+    )
+    response = HTMLResponse(html)
+    response.headers['X-Total-Rows'] = str(int(total_rows))
+    response.headers['X-Shown-Count'] = str(int(shown_count))
+    response.headers['X-Offset'] = str(int(offset))
+    response.headers['X-Limit'] = str(int(limit))
+    return response
 
 
 @router.get('/partials/visit-row', response_class=HTMLResponse)
@@ -168,3 +228,8 @@ async def blocked_page(request: Request):
         name='blocked.html',
         context={'title': 'غير متاح حالياً'},
     )
+
+
+@router.get('/healthz')
+async def healthz():
+    return {'ok': True}
