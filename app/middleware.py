@@ -24,4 +24,8 @@ class StaticCacheMiddleware(BaseHTTPMiddleware):
                 response.headers['Expires'] = '0'
             else:
                 response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+        elif 'Cache-Control' not in response.headers:
+            response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+            response.headers['Pragma'] = 'no-cache'
+            response.headers['Expires'] = '0'
         return response

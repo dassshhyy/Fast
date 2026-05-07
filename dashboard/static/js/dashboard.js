@@ -124,7 +124,13 @@ function updateShownRowsValue({ offset, shownCount }) {
 
 function updateLoadMoreLink({ offset, limit, shownCount, totalRows, sortOnlineFirst }) {
   if (!loadMoreLinkEl) return;
-  const nextOffset = offset + Number(shownCount || 0);
+  const safeShownCount = Number(shownCount || 0);
+  if (safeShownCount <= 0) {
+    loadMoreLinkEl.classList.add("d-none");
+    loadMoreLinkEl.setAttribute("href", "#");
+    return;
+  }
+  const nextOffset = offset + safeShownCount;
   const hasMore = Number(totalRows || 0) > nextOffset;
   if (!hasMore) {
     loadMoreLinkEl.classList.add("d-none");
@@ -138,6 +144,20 @@ function updateLoadMoreLink({ offset, limit, shownCount, totalRows, sortOnlineFi
   else nextUrl.searchParams.delete("sort_online_first");
   loadMoreLinkEl.setAttribute("href", nextUrl.pathname + nextUrl.search);
   loadMoreLinkEl.classList.remove("d-none");
+}
+
+function renderDashboardLoadError() {
+  if (!tableBody) return;
+  const fallbackUrl = new URL(window.location.href);
+  fallbackUrl.searchParams.set("ssr", "1");
+  tableBody.innerHTML = `
+    <tr>
+      <td colspan="6" class="text-center py-4 text-muted">
+        تعذر تحميل السجلات.
+        <a href="${escapeHtml(fallbackUrl.pathname + fallbackUrl.search)}" class="link-secondary">جرّب التحميل المباشر</a>
+      </td>
+    </tr>
+  `;
 }
 
 async function softReloadDashboard({ delayMs = 0 } = {}) {
@@ -3204,6 +3224,7 @@ if (!syncSortOnlineFirstRoute()) {
     restoreSeenInfoState();
     const ok = await softReloadDashboard();
     if (!ok) {
+      renderDashboardLoadError();
       updateLoadMoreLink({ ...dashboardQuery(), shownCount: 0, totalRows: currentVisitsTotal });
     }
     applyEntryFilters();

@@ -22,31 +22,13 @@
 	        } catch (_) {}
 	      })();
     </script>
-    <link href="/static/vendor/bootstrap/css/bootstrap.rtl.min.css" rel="stylesheet" />
-    <link rel="preload" href="/static/vendor/fontawesome/css/all.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
-    <noscript><link href="/static/vendor/fontawesome/css/all.min.css" rel="stylesheet" /></noscript>
     <style>
-      @font-face {
-        font-family: "SF Arabic";
-        src: url('/static/fonts/sf-arabic/SFArabic.ttf') format('truetype');
-        font-weight: 100 900;
-        font-display: swap;
-      }
-      @font-face {
-        font-family: "SF Arabic Rounded";
-        src: url('/static/fonts/sf-arabic/SFArabicRounded.ttf') format('truetype');
-        font-weight: 100 900;
-        font-display: swap;
-      }
-
       :root {
         --bg: #f3f6fc;
         --surface: #ffffff;
         --ink: #172033;
         --muted: #6b768d;
         --line: #dbe3ef;
-        --line-soft: #eaf0f8;
-        --brand: #275df6;
       }
 
       html, body {
@@ -68,6 +50,87 @@
 
       .topbar {
         background: rgba(255, 255, 255, 0.92);
+        border-bottom: 1px solid var(--line);
+      }
+
+      .layout {
+        max-width: 1600px;
+        margin: 0 auto;
+        padding: 10px 16px 18px;
+        height: calc(100dvh - 110px);
+        display: flex;
+      }
+
+      .panel {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        background: #fcfdff;
+        border: 1px solid #e5eaf3;
+        border-radius: 20px;
+        box-shadow: 0 10px 28px rgba(25, 52, 97, 0.08);
+        overflow: hidden;
+      }
+
+      .empty-state {
+        flex: 1;
+        min-height: 0;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+      }
+
+      .empty-box {
+        width: min(520px, 100%);
+        text-align: center;
+        background: linear-gradient(180deg, rgba(255,255,255,.95), rgba(249,251,255,.92));
+        border: 1px solid #e5edf8;
+        border-radius: 24px;
+        padding: 34px 28px;
+        box-shadow: 0 20px 45px rgba(31, 56, 99, 0.08);
+      }
+
+      .empty-title {
+        margin: 0 0 10px;
+        color: #22324b;
+        font-size: clamp(1.4rem, 2.2vw, 2rem);
+        font-weight: 800;
+        letter-spacing: -.02em;
+      }
+
+      .empty-sub {
+        margin: 0;
+        color: var(--muted);
+        font-size: 1rem;
+        line-height: 1.9;
+      }
+    </style>
+    <link rel="preload" href="/static/vendor/bootstrap/css/bootstrap.rtl.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <noscript><link href="/static/vendor/bootstrap/css/bootstrap.rtl.min.css" rel="stylesheet" /></noscript>
+    <link rel="preload" href="/static/vendor/fontawesome/css/all.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <noscript><link href="/static/vendor/fontawesome/css/all.min.css" rel="stylesheet" /></noscript>
+    <style>
+      @font-face {
+        font-family: "SF Arabic";
+        src: url('/static/fonts/sf-arabic/SFArabic.ttf') format('truetype');
+        font-weight: 100 900;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: "SF Arabic Rounded";
+        src: url('/static/fonts/sf-arabic/SFArabicRounded.ttf') format('truetype');
+        font-weight: 100 900;
+        font-display: swap;
+      }
+
+      :root {
+        --line-soft: #eaf0f8;
+        --brand: #275df6;
+      }
+
+      .topbar {
+        background: rgba(255, 255, 255, 0.92);
         backdrop-filter: blur(10px);
         border-bottom: 1px solid var(--line);
       }
@@ -82,13 +145,6 @@
         background: linear-gradient(135deg, #2b63fb, #1f4fd4);
       }
 
-      .layout {
-        max-width: 1600px;
-        margin: 0 auto;
-        padding: 10px 16px 18px;
-        height: calc(100dvh - 110px);
-        display: flex;
-      }
       .filters-wrap {
         max-width: 1600px;
         margin: 0 auto;
@@ -386,18 +442,6 @@
         border-radius: 50%;
         background: #2563eb;
         box-shadow: 0 0 0 4px rgba(37, 99, 235, .16);
-      }
-
-      .panel {
-        width: 100%;
-        height: 100%;
-        display: flex;
-        flex-direction: column;
-        background: #fcfdff;
-        border: 1px solid #e5eaf3;
-        border-radius: 20px;
-        box-shadow: 0 10px 28px rgba(25, 52, 97, 0.08);
-        overflow: hidden;
       }
 
       .table-wrap {
@@ -2308,7 +2352,7 @@
 
     <main class="layout">
       <section class="panel">
-        {% if rows|length == 0 %}
+        {% if total_rows == 0 and rows|length == 0 %}
         <div class="empty-state">
           <div class="empty-box">
             <div class="empty-icon"><i class="fa-regular fa-folder-open"></i></div>
