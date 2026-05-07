@@ -4,7 +4,7 @@ import time
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from .. import state
@@ -25,7 +25,7 @@ from ..services.sessions import (
     persist_login_session,
     persist_logout_session,
 )
-from ..services.visits import get_visits_total_count, list_visits
+from ..services.visits import dashboard_row_for_visitor_uid, get_visits_total_count, list_visits
 from ..services.visitors import get_blocked_visitor_uids
 from ..utils import detect_device_from_user_agent
 
@@ -138,6 +138,27 @@ async def dashboard(request: Request):
             'page_choices': page_choices_for_dashboard(),
         },
     )
+
+
+@router.get('/partials/visit-row', response_class=HTMLResponse)
+async def partial_visit_row(request: Request, visitor_uid: str):
+    session = get_session(request)
+    if not session:
+        return HTMLResponse('', status_code=401)
+    total_rows = get_visits_total_count()
+    row = dashboard_row_for_visitor_uid(visitor_uid, display_id=total_rows)
+    if not row:
+        return HTMLResponse('', status_code=404)
+    blocked_visitor_uids = get_blocked_visitor_uids([visitor_uid])
+    html = templates.get_template('_visit_row.html').render(
+        {
+            'request': request,
+            'row': row,
+            'blocked_visitor_uids': blocked_visitor_uids,
+            'page_choices': page_choices_for_dashboard(),
+        }
+    )
+    return HTMLResponse(html)
 
 
 @router.get('/blocked')

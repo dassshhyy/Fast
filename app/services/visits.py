@@ -280,6 +280,19 @@ def create_visit_record(payload: dict) -> dict:
     }
 
 
+def dashboard_row_for_visitor_uid(visitor_uid: str, *, display_id: int | None = None) -> dict | None:
+    """Fetch a single visit row formatted for the dashboard table."""
+    visitor_uid = (visitor_uid or '').strip()
+    if not visitor_uid:
+        return None
+    db = get_mongo_db()
+    row = db.visits.find_one({'visitor_uid': visitor_uid})
+    if not row:
+        return None
+    latest_value = latest_submission_at(visitor_uid)
+    return serialize_visit(row, display_id=display_id, latest_submission_at_value=latest_value)
+
+
 def touch_visit_presence(visitor_uid: str, source_page: str = '', *, include_submission_at: bool = True) -> dict:
     """Lightweight heartbeat update for presence without incrementing visit counters."""
     visitor_uid = (visitor_uid or '').strip()

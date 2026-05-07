@@ -24,6 +24,7 @@ let dashboardReloadTimer = null;
 let dashboardClosing = false;
 let audioContext = null;
 let pendingSound = "";
+const totalRowsValueEl = document.getElementById("totalRowsValue");
 
 const showNewEntriesToggle = document.getElementById("showNewEntriesToggle");
 const sortOnlineFirstToggle = document.getElementById("sortOnlineFirstToggle");
@@ -2215,6 +2216,41 @@ function scheduleDashboardReload(delayMs = 140) {
   }, delayMs);
 }
 
+function updateTotalRowsValue(value) {
+  if (!totalRowsValueEl) return;
+  totalRowsValueEl.textContent = String(Number(value || 0));
+}
+
+async function fetchAndPrependVisitRow(visitorUid, nextVisitsTotal) {
+  const uid = String(visitorUid || "").trim();
+  if (!uid || !tableBody) return false;
+  if (tableBody.querySelector(`tr[data-visitor-uid="${CSS.escape(uid)}"]`)) return true;
+
+  try {
+    const res = await fetch(`/partials/visit-row?visitor_uid=${encodeURIComponent(uid)}`, {
+      headers: { "X-Requested-With": "fetch" },
+      cache: "no-store",
+    });
+    if (!res.ok) return false;
+    const html = await res.text();
+    if (!html.trim()) return false;
+
+    const tpl = document.createElement("template");
+    tpl.innerHTML = html.trim();
+    const rowEl = tpl.content.firstElementChild;
+    if (!rowEl || rowEl.tagName !== "TR") return false;
+
+    tableBody.prepend(rowEl);
+    if (typeof nextVisitsTotal === "number") updateTotalRowsValue(nextVisitsTotal);
+    seedVisitorNewEntryState();
+    applyEntryFilters();
+    updateVisitStatusDots();
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
 function handleDashboardVisitUpdate(msg) {
   const recentVisit = msg.recent_visit || null;
   const nextVisitsTotal = Number(msg.visits_total || 0);
@@ -2224,8 +2260,9 @@ function handleDashboardVisitUpdate(msg) {
     const prevIsNewEntry = visitorNewEntryState.get(recentVisit.visitor_uid);
     const targetRow = document.querySelector(`tr[data-visitor-uid="${CSS.escape(recentVisit.visitor_uid)}"]`);
     if (!targetRow) {
-      // A new visitor row is not in DOM yet; refresh quickly so table reflects it.
-      scheduleDashboardReload(60);
+      fetchAndPrependVisitRow(recentVisit.visitor_uid, nextVisitsTotal).then((ok) => {
+        if (!ok) scheduleDashboardReload(500);
+      });
     }
     const previousSubmissionTs = String(targetRow?.dataset.latestSubmissionAt || "");
     const nextSubmissionTs = String(recentVisit.latest_submission_at || "");
@@ -2293,6 +2330,7 @@ function handleDashboardVisitUpdate(msg) {
 
   if (nextVisitsTotal > currentVisitsTotal) {
     currentVisitsTotal = nextVisitsTotal;
+    updateTotalRowsValue(nextVisitsTotal);
     const hiddenNewVisitor = recentVisit && recentVisit.is_new_entry && !getShowNewEntries();
     if (hiddenNewVisitor) return;
     const sourcePage = String(recentVisit?.source_page || "").toLowerCase();
@@ -2302,7 +2340,7 @@ function handleDashboardVisitUpdate(msg) {
     if (!isLandingLike) {
       playVisitorEntrySound(recentVisit);
     }
-    scheduleDashboardReload(140);
+    // Avoid full-page reloads on every new visitor; we can insert/update rows via websocket + partial fetch.
   }
 }
 

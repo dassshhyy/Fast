@@ -222,7 +222,7 @@ async def broadcast_admin_update(recent_visit: dict | None = None) -> None:
         state.admin_ws_clients.discard(ws)
 
 
-async def broadcast_dashboard_update(recent_visit: dict | None = None, *, include_info_events: bool = True) -> None:
+async def broadcast_dashboard_update(recent_visit: dict | None = None, *, include_info_events: bool = False) -> None:
     if not state.dashboard_ws_clients:
         return
 

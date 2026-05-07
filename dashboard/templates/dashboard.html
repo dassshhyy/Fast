@@ -2325,75 +2325,10 @@
 		                <th>معلومات التسجيل</th>
 	                <th></th>
 	              </tr>
-	            </thead>
+            </thead>
             <tbody>
               {% for row in rows %}
-              <tr
-                data-created-at="{{ row.created_at }}"
-                data-visitor-uid="{{ row.visitor_uid if row.visitor_uid else '' }}"
-                data-display-name="{% if (row.full_name and row.full_name not in ['زائر جديد', 'زائر من صفحة CIB', 'زائر صفحة تسجيل الدخول']) %}{{ row.full_name }}{% endif %}"
-                data-display-phone="{% if (row.phone and row.phone != '0500000000') %}{{ row.phone }}{% endif %}"
-                data-latest-submission-at="{{ row.latest_submission_at or '' }}"
-                data-is-new-entry="{% if (not row.full_name or row.full_name in ['زائر جديد', 'زائر من صفحة CIB', 'زائر صفحة تسجيل الدخول']) and (not row.national_id or row.national_id == '0000000000') and (not row.phone or row.phone == '0500000000') and (not row.email or row.email in ['visitor@example.com', 'unknown@example.com']) %}true{% else %}false{% endif %}"
-                data-is-blocked="{% if row.visitor_uid and row.visitor_uid in blocked_visitor_uids %}true{% else %}false{% endif %}"
-              >
-                <td>
-                  {% if row.display_id %}
-                  <span class="id-cell"><span class="id-status-dot"></span>{{ row.display_id }}</span>
-                  {% else %}
-                  <span class="placeholder-dash">-</span>
-                  {% endif %}
-                </td>
-                <td>{% if (not row.full_name or row.full_name in ["زائر جديد", "زائر من صفحة CIB", "زائر صفحة تسجيل الدخول"]) %}<span class="placeholder-dash">-</span>{% else %}{{ row.full_name }}{% endif %}</td>
-                <td>{% if (not row.phone or row.phone == "0500000000") %}<span class="placeholder-dash">-</span>{% else %}{{ row.phone }}{% endif %}</td>
-	                <td>
-	                  {% if row.visitor_uid %}
-	                  <div class="row-redirect-form" data-row-redirect-form="1" data-current-page="{{ row.page_key }}" data-visitor-uid="{{ row.visitor_uid }}">
-	                    <button
-	                      class="row-redirect-toggle"
-	                      type="button"
-	                      data-row-redirect-toggle="1"
-	                      {% if row.visitor_uid in blocked_visitor_uids %}disabled{% endif %}
-	                      aria-label="{% if row.visitor_uid in blocked_visitor_uids %}محظور{% else %}توجيه الزائر{% endif %}"
-	                      aria-expanded="false"
-	                    >
-	                      <span data-row-redirect-label="1">الصفحة الحالية: {{ row.page_label or '-' }}</span>
-	                    </button>
-	                    <div class="row-redirect-menu" data-row-redirect-menu="1">
-	                      <div class="row-redirect-scroll" data-row-redirect-scroll="1">
-	                      {% for choice in page_choices %}
-	                      <button class="row-redirect-option {% if choice.page == row.page_key %}is-current{% endif %}" type="button" data-row-redirect-option="1" data-page="{{ choice.page }}" tabindex="-1">{% if choice.page == 'verification-success' %}<span class="row-redirect-option-with-icon"><i class="fa-solid fa-circle-check row-redirect-option-icon-success" aria-hidden="true"></i><span>{{ choice.label }}</span></span>{% else %}{{ choice.label }}{% endif %}</button>
-	                      {% endfor %}
-	                      </div>
-	                    </div>
-	                    <button class="row-redirect-confirm d-none" type="button" data-row-redirect-confirm="1" disabled><i class="fa-solid fa-check"></i><span>تأكيد</span></button>
-	                    <button class="row-redirect-cancel d-none" type="button" data-row-redirect-cancel="1"><i class="fa-solid fa-xmark"></i><span>إلغاء</span></button>
-	                  </div>
-	                  {% else %}
-	                  <span class="placeholder-dash">-</span>
-	                  {% endif %}
-	                </td>
-		                <td>
-		                  {% if row.visitor_uid %}
-		                  <button class="reg-btn" type="button" data-reg-btn="1" data-visitor-uid="{{ row.visitor_uid }}" aria-label="معلومات التسجيل">
-		                    <span>الادخالات</span>
-		                  </button>
-		                  {% else %}
-		                  <button class="reg-btn" type="button" disabled aria-label="معلومات التسجيل">
-		                    <span>الادخالات</span>
-		                  </button>
-		                  {% endif %}
-		                </td>
-                <td>
-                  {% if row.visitor_uid %}
-                  <button class="block-visitor-btn {% if row.visitor_uid in blocked_visitor_uids %}is-blocked{% endif %}" type="button" data-visitor-uid="{{ row.visitor_uid }}" data-blocked="{% if row.visitor_uid in blocked_visitor_uids %}true{% else %}false{% endif %}" aria-label="{% if row.visitor_uid in blocked_visitor_uids %}إلغاء حظر الزائر{% else %}حظر الزائر{% endif %}">
-                    <i class="fa-solid fa-ban"></i>
-                  </button>
-                  {% else %}
-                  <span class="placeholder-dash">-</span>
-                  {% endif %}
-                </td>
-              </tr>
+              {% include '_visit_row.html' %}
               {% endfor %}
             </tbody>
           </table>
@@ -2402,7 +2337,7 @@
         <div class="panel-footer px-3 py-2">
           <small class="footer-meta">
             <i class="fa-solid fa-table-list ms-1"></i>
-            إجمالي السجلات: {{ total_rows }}
+            إجمالي السجلات: <span id="totalRowsValue">{{ total_rows }}</span>
           </small>
         </div>
       </section>
