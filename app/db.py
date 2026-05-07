@@ -3,12 +3,12 @@ from datetime import datetime, timezone
 from pymongo import ASCENDING, DESCENDING, MongoClient
 
 from . import state
-from .config import MONGODB_DB_NAME, MONGODB_URL, ROOT_ADMIN_USERNAME
+from .config import MONGODB_DB_NAME, MONGODB_SERVER_SELECTION_TIMEOUT_MS, MONGODB_URL, ROOT_ADMIN_USERNAME
 
 
 def get_mongo_db():
     if state.mongo_client is None:
-        state.mongo_client = MongoClient(MONGODB_URL, serverSelectionTimeoutMS=5000)
+        state.mongo_client = MongoClient(MONGODB_URL, serverSelectionTimeoutMS=MONGODB_SERVER_SELECTION_TIMEOUT_MS)
         state.mongo_db = state.mongo_client[MONGODB_DB_NAME]
     return state.mongo_db
 
