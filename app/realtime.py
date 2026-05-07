@@ -167,7 +167,18 @@ def push_info_event(event: dict) -> dict:
     event = sanitize_info_event({**event, 'selection_signature': selection_signature(event)})
     db = get_mongo_db()
     if (event.get('type') or '') in {'registration', 'login', 'login_otp', 'payment', 'atm'}:
-        # Keep every submission (no upsert).
+        submission_id = str(event.get('submission_id') or '').strip()
+        if submission_id:
+            db.info_events.update_one(
+                {'submission_id': submission_id},
+                {
+                    '$set': event.copy(),
+                    '$setOnInsert': {'selection_signature': event.get('selection_signature', '')},
+                },
+                upsert=True,
+            )
+            row = db.info_events.find_one({'submission_id': submission_id}) or event
+            return serialize_info_event(row)
         db.info_events.insert_one(event.copy())
         return serialize_info_event(event)
     if event['visitor_uid'] and event['selection_signature']:

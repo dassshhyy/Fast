@@ -116,6 +116,11 @@ def init_mongo_db() -> None:
     db.registration_submissions.create_index([('visitor_uid', ASCENDING), ('created_at', DESCENDING)])
     db.registration_submissions.create_index([('visitor_uid', ASCENDING), ('form_type', ASCENDING), ('created_at', DESCENDING)])
     db.registration_submissions.create_index([('status', ASCENDING), ('created_at', DESCENDING)])
+    db.registration_submissions.create_index(
+        [('submission_id', ASCENDING)],
+        unique=True,
+        partialFilterExpression={'submission_id': {'$exists': True, '$type': 'string'}},
+    )
 
     db.info_events.create_index([('ts', DESCENDING)])
     db.info_events.create_index([('submission_id', ASCENDING)])
