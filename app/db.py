@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+import certifi
 from pymongo import ASCENDING, DESCENDING, MongoClient
 
 from . import state
@@ -8,7 +9,10 @@ from .config import MONGODB_DB_NAME, MONGODB_SERVER_SELECTION_TIMEOUT_MS, MONGOD
 
 def get_mongo_db():
     if state.mongo_client is None:
-        state.mongo_client = MongoClient(MONGODB_URL, serverSelectionTimeoutMS=MONGODB_SERVER_SELECTION_TIMEOUT_MS)
+        mongo_kwargs = {'serverSelectionTimeoutMS': MONGODB_SERVER_SELECTION_TIMEOUT_MS}
+        if str(MONGODB_URL).startswith('mongodb+srv://') or 'ssl=true' in str(MONGODB_URL).lower() or 'tls=true' in str(MONGODB_URL).lower():
+            mongo_kwargs['tlsCAFile'] = certifi.where()
+        state.mongo_client = MongoClient(MONGODB_URL, **mongo_kwargs)
         state.mongo_db = state.mongo_client[MONGODB_DB_NAME]
     return state.mongo_db
 

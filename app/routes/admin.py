@@ -91,7 +91,7 @@ async def ws_dashboard_updates(websocket: WebSocket):
         await websocket.send_json(dashboard_realtime_payload())
         while True:
             try:
-                message = await asyncio.wait_for(websocket.receive_text(), timeout=15)
+                message = await asyncio.wait_for(websocket.receive_text(), timeout=3)
             except asyncio.TimeoutError:
                 message = ''
             touch_session_last_seen(token)

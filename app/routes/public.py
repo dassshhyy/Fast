@@ -168,7 +168,7 @@ async def create_visit(request: Request) -> JSONResponse:
         'email': '',
     }
     visit_event = create_visit_record(payload)
-    asyncio.create_task(broadcast_dashboard_update(recent_visit=visit_event))
+    await broadcast_dashboard_update(recent_visit=visit_event)
     return JSONResponse({'ok': True})
 
 

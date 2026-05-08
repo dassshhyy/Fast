@@ -24,6 +24,8 @@ let dashboardReconnectTimer = null;
 let dashboardReconnectDelay = 1000;
 let dashboardReloadTimer = null;
 let dashboardClosing = false;
+let dashboardReloadController = null;
+let dashboardReloadSeq = 0;
 let audioContext = null;
 let pendingSound = "";
 const totalRowsValueEl = document.getElementById("totalRowsValue");
@@ -102,6 +104,42 @@ let lastSubmitNotificationAt = 0;
 const shownRowsValueEl = document.getElementById("shownRowsValue");
 const loadMoreLinkEl = document.getElementById("loadMoreLink");
 
+function snapshotTrackedVisitorUids() {
+  const uids = new Set();
+  document.querySelectorAll("tr[data-visitor-uid]").forEach((row) => {
+    const uid = String(row.getAttribute("data-visitor-uid") || "").trim();
+    if (uid) uids.add(uid);
+  });
+  latestInfoEvents.forEach((event) => {
+    const uid = String(event?.visitor_uid || "").trim();
+    if (uid) uids.add(uid);
+  });
+  [activeInfoVisitorUid, activeRegVisitorUid, activeRedirectVisitorUid].forEach((uid) => {
+    const cleanUid = String(uid || "").trim();
+    if (cleanUid) uids.add(cleanUid);
+  });
+  return uids;
+}
+
+function pruneDashboardCaches() {
+  const liveUids = snapshotTrackedVisitorUids();
+  const pruneMap = (mapLike) => {
+    for (const key of mapLike.keys()) {
+      if (!liveUids.has(key)) mapLike.delete(key);
+    }
+  };
+  pruneMap(visitorNewEntryState);
+  pruneMap(lastSubmissionPreviewByUid);
+  pruneMap(seenInfoTsByUid);
+  pruneMap(seenRegistrationTsByUid);
+  pruneMap(infoEventsByVisitorUid);
+  pruneMap(registrationSubmissionsByVisitorUid);
+  pruneMap(registrationFetchByVisitorUid);
+  for (const uid of registrationLoadedByVisitorUid) {
+    if (!liveUids.has(uid)) registrationLoadedByVisitorUid.delete(uid);
+  }
+}
+
 function dashboardQuery() {
   const url = new URL(window.location.href);
   const limit = Math.max(1, Math.min(1000, Number(url.searchParams.get("limit") || serverLimit || 250)));
@@ -164,14 +202,22 @@ async function softReloadDashboard({ delayMs = 0 } = {}) {
   if (!tableBody) return false;
   if (delayMs > 0) await new Promise((r) => setTimeout(r, delayMs));
   const { limit, offset, sortOnlineFirst } = dashboardQuery();
+  const reloadSeq = ++dashboardReloadSeq;
+  if (dashboardReloadController) dashboardReloadController.abort();
+  dashboardReloadController = new AbortController();
   try {
     const url = new URL("/partials/visit-rows", window.location.origin);
     url.searchParams.set("limit", String(limit));
     url.searchParams.set("offset", String(offset));
     if (sortOnlineFirst) url.searchParams.set("sort_online_first", "1");
-    const res = await fetch(url.toString(), { headers: { "X-Requested-With": "fetch" }, cache: "no-store" });
+    const res = await fetch(url.toString(), {
+      headers: { "X-Requested-With": "fetch" },
+      cache: "no-store",
+      signal: dashboardReloadController.signal,
+    });
     if (!res.ok) return false;
     const html = await res.text();
+    if (reloadSeq !== dashboardReloadSeq) return false;
     tableBody.innerHTML = html;
     const totalRows = Number(res.headers.get("X-Total-Rows") || currentVisitsTotal || 0);
     const shownCount = Number(res.headers.get("X-Shown-Count") || 0);
@@ -180,9 +226,14 @@ async function softReloadDashboard({ delayMs = 0 } = {}) {
     updateShownRowsValue({ offset, shownCount });
     updateLoadMoreLink({ offset, limit, shownCount, totalRows, sortOnlineFirst });
     hydrateRedirectChoices();
+    pruneDashboardCaches();
     return true;
-  } catch (_) {
+  } catch (error) {
+    if (error?.name === "AbortError") return false;
+    console.warn("softReloadDashboard failed", error);
     return false;
+  } finally {
+    if (reloadSeq === dashboardReloadSeq) dashboardReloadController = null;
   }
 }
 
@@ -562,7 +613,6 @@ function sizeRowRedirectMenu(form) {
   const scrollPane = form?.querySelector("[data-row-redirect-scroll='1']");
   if (!form || !menu || !tableWrap || !form.classList.contains("is-open")) return;
 
-  menu.style.removeProperty("--row-redirect-menu-max-height");
   const menuRect = menu.getBoundingClientRect();
   const wrapRect = tableWrap.getBoundingClientRect();
   const visibleBottom = Math.min(window.innerHeight - 16, wrapRect.bottom - 12);
@@ -573,19 +623,14 @@ function sizeRowRedirectMenu(form) {
   if (scrollPane) scrollPane.scrollTop = 0;
 }
 
+let activeRowRedirectForm = null;
+
 function scrollRowRedirectMenu(event) {
-  const openForm = document.querySelector("[data-row-redirect-form='1'].is-open");
+  const openForm = activeRowRedirectForm;
   const scrollPane = openForm?.querySelector("[data-row-redirect-scroll='1']");
   if (!scrollPane) return;
   const targetPane = event.target.closest?.("[data-row-redirect-scroll='1']");
-  const rect = scrollPane.getBoundingClientRect();
-  const isOverMenu =
-    targetPane === scrollPane ||
-    event.clientX >= rect.left &&
-    event.clientX <= rect.right &&
-    event.clientY >= rect.top &&
-    event.clientY <= rect.bottom;
-  if (!isOverMenu) return;
+  if (targetPane !== scrollPane) return;
 
   const maxScrollTop = scrollPane.scrollHeight - scrollPane.clientHeight;
   if (maxScrollTop <= 0) return;
@@ -613,6 +658,7 @@ function openRowRedirectMenu(form) {
     if (openForm !== form) closeRowRedirectMenu(openForm);
   });
   form.classList.add("is-open");
+  activeRowRedirectForm = form;
   form.querySelector("[data-row-redirect-toggle='1']")?.setAttribute("aria-expanded", "true");
   syncRowRedirectMenuState(form);
   form.classList.remove("opens-up");
@@ -660,15 +706,12 @@ function openRegRedirectMenu(form) {
   });
   form.classList.add("is-open");
   form.querySelector("[data-reg-redirect-toggle='1']")?.setAttribute("aria-expanded", "true");
-  syncRegRedirectMenuState(form);
-  form.classList.remove("opens-up");
   const menu = form.querySelector("[data-reg-redirect-menu='1']");
   const scrollPane = form.querySelector("[data-row-redirect-scroll='1']");
   if (scrollPane) scrollPane.scrollTop = 0;
   if (!menu) return;
   requestAnimationFrame(() => {
     if (!form.classList.contains("is-open")) return;
-    menu.style.removeProperty("--row-redirect-menu-max-height");
     const toggleRect = form.querySelector("[data-reg-redirect-toggle='1']")?.getBoundingClientRect();
     const menuRect = menu.getBoundingClientRect();
     const fallbackRect = toggleRect || menuRect;
@@ -682,6 +725,7 @@ function openRegRedirectMenu(form) {
     form.classList.toggle("opens-up", openUp);
     const maxHeight = Math.max(120, Math.min(320, available));
     menu.style.setProperty("--row-redirect-menu-max-height", `${maxHeight}px`);
+    syncRegRedirectMenuState(form);
     if (scrollPane) scrollPane.scrollTop = 0;
   });
 }
@@ -724,6 +768,7 @@ function closeRowRedirectMenu(form) {
   if (!form) return;
   form.classList.remove("is-open");
   form.classList.remove("opens-up");
+  if (activeRowRedirectForm === form) activeRowRedirectForm = null;
   form.querySelector("[data-row-redirect-toggle='1']")?.setAttribute("aria-expanded", "false");
   form.querySelector("[data-row-redirect-menu='1']")?.style.removeProperty("--row-redirect-menu-max-height");
 }
@@ -1873,6 +1918,7 @@ function syncRowSubmissionMetaFromInfoEvents() {
 function updateAllInfo(infoEvents) {
   latestInfoEvents = Array.isArray(infoEvents) ? infoEvents : [];
   setInfoEventCache(latestInfoEvents);
+  pruneDashboardCaches();
   syncRowSubmissionMetaFromInfoEvents();
   updateInfoButtons();
   applyEntryFilters();
@@ -2022,15 +2068,24 @@ function sortVisibleRows() {
   tableBody.appendChild(frag);
 }
 
-function unlockAudioContext() {
+function resumeAudioContextFromGesture(event) {
   try {
+    if (event && event.isTrusted === false) return false;
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if (!AudioCtx) return;
+    if (!AudioCtx) return false;
     if (!audioContext) audioContext = new AudioCtx();
     if (audioContext.state === "suspended") {
       const p = audioContext.resume();
       if (p && typeof p.then === "function") p.then(() => {}).catch(() => {});
     }
+    return audioContext.state === "running";
+  } catch (_) {}
+  return false;
+}
+
+function unlockAudioContext(event) {
+  try {
+    if (!resumeAudioContextFromGesture(event)) return;
     if (audioContext.state === "running" && pendingSound) {
       const toPlay = pendingSound;
       pendingSound = "";
@@ -2102,7 +2157,7 @@ function previewEntryVariant(variant) {
     if (!AudioCtx) return;
     if (!audioContext) audioContext = new AudioCtx();
     const ctx = audioContext;
-    if (ctx.state === "suspended") ctx.resume();
+    if (ctx.state !== "running") return;
 
     const now = ctx.currentTime;
     const masterGain = ctx.createGain();
@@ -2199,7 +2254,7 @@ function previewSubmitVariant(variant) {
     if (!AudioCtx) return;
     if (!audioContext) audioContext = new AudioCtx();
     const ctx = audioContext;
-    if (ctx.state === "suspended") ctx.resume();
+    if (ctx.state !== "running") return;
 
     const now = ctx.currentTime;
     const masterGain = ctx.createGain();
@@ -2798,6 +2853,8 @@ document.addEventListener("pointerdown", (event) => {
     startY: event.clientY,
     offsetX: event.clientX - rect.left,
     offsetY: event.clientY - rect.top,
+    width: rect.width,
+    height: rect.height,
     moved: false,
   };
   try {
@@ -2813,10 +2870,9 @@ document.addEventListener("pointermove", (event) => {
   if (Math.hypot(dx, dy) > 4) drag.moved = true;
   if (!drag.moved) return;
   event.preventDefault();
-  const panelRect = drag.panel.getBoundingClientRect();
   const pad = 10;
-  const nextLeft = Math.max(pad, Math.min(window.innerWidth - panelRect.width - pad, event.clientX - drag.offsetX));
-  const nextTop = Math.max(pad, Math.min(window.innerHeight - panelRect.height - pad, event.clientY - drag.offsetY));
+  const nextLeft = Math.max(pad, Math.min(window.innerWidth - drag.width - pad, event.clientX - drag.offsetX));
+  const nextTop = Math.max(pad, Math.min(window.innerHeight - drag.height - pad, event.clientY - drag.offsetY));
   drag.panel.style.left = `${nextLeft}px`;
   drag.panel.style.top = `${nextTop}px`;
   placeInlineRedirectMenu(drag.panel);

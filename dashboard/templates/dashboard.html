@@ -4,8 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{{ title }}</title>
-	    <script>
-	      (function () {
+    <script>
+      (function () {
 	        try {
 	          const sortKey = "dashboard.sortOnlineFirst";
 	          const storedSortOnlineFirst = localStorage.getItem(sortKey) || "false";
@@ -20,8 +20,11 @@
 	          document.documentElement.dataset.showNewEntries = localStorage.getItem("dashboard.showNewEntries") || "true";
 	          document.documentElement.dataset.sortOnlineFirst = sortUrl.searchParams.get("sort_online_first") === "1" ? "true" : storedSortOnlineFirst;
 	        } catch (_) {}
-	      })();
+      })();
     </script>
+    <link rel="preload" href="/static/vendor/fontawesome/webfonts/fa-solid-900.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/static/fonts/sf-arabic/SFArabic.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/static/fonts/sf-arabic/SFArabicRounded.woff2" as="font" type="font/woff2" crossorigin>
     <style>
       :root {
         --bg: #f3f6fc;
@@ -113,15 +116,19 @@
     <style>
       @font-face {
         font-family: "SF Arabic";
-        src: url('/static/fonts/sf-arabic/SFArabic.ttf') format('truetype');
+        src:
+          url('/static/fonts/sf-arabic/SFArabic.woff2') format('woff2'),
+          url('/static/fonts/sf-arabic/SFArabic.ttf') format('truetype');
         font-weight: 100 900;
-        font-display: swap;
+        font-display: optional;
       }
       @font-face {
         font-family: "SF Arabic Rounded";
-        src: url('/static/fonts/sf-arabic/SFArabicRounded.ttf') format('truetype');
+        src:
+          url('/static/fonts/sf-arabic/SFArabicRounded.woff2') format('woff2'),
+          url('/static/fonts/sf-arabic/SFArabicRounded.ttf') format('truetype');
         font-weight: 100 900;
-        font-display: swap;
+        font-display: optional;
       }
 
       :root {

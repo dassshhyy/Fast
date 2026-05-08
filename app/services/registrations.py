@@ -200,15 +200,12 @@ def create_registration_submission(
     }
     existing = db.registration_submissions.find_one({'submission_id': submission_id}, {'status': 1})
     if existing:
+        if str(existing.get('status') or '') in {'accepted', 'rejected', 'missed'}:
+            return submission_id
         update_doc = {k: v for k, v in doc.items() if k not in {'submission_id', 'created_at'}}
-        if str(existing.get('status') or '') not in {'accepted', 'rejected', 'missed'}:
-            update_doc['status'] = normalized_status
-            update_doc['decided_at'] = now if is_decided else None
-            update_doc['decided_by'] = decided_by if is_decided else ''
-        else:
-            update_doc.pop('status', None)
-            update_doc.pop('decided_at', None)
-            update_doc.pop('decided_by', None)
+        update_doc['status'] = normalized_status
+        update_doc['decided_at'] = now if is_decided else None
+        update_doc['decided_by'] = decided_by if is_decided else ''
         db.registration_submissions.update_one({'submission_id': submission_id}, {'$set': update_doc})
         return submission_id
 

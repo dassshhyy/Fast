@@ -14,7 +14,10 @@ def load_dotenv_file() -> None:
         if not line or line.startswith('#') or '=' not in line:
             continue
         key, value = line.split('=', 1)
-        os.environ.setdefault(key.strip(), value.strip())
+        parsed_value = value.strip()
+        if len(parsed_value) >= 2 and parsed_value[0] == parsed_value[-1] and parsed_value[0] in {'"', "'"}:
+            parsed_value = parsed_value[1:-1]
+        os.environ.setdefault(key.strip(), parsed_value)
 
 
 load_dotenv_file()
